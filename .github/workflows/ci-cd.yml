@@ -32,12 +32,12 @@ jobs:
       contents: read
     steps:
       - name: Checkout con historial completo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Escaneo de secretos con Gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -52,10 +52,10 @@ jobs:
       pull-requests: write # comentario de cobertura en el PR
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configurar Node.js con cache de npm
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -81,14 +81,14 @@ jobs:
 
       - name: Subir reporte de cobertura
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage
           if-no-files-found: ignore
 
       - name: Subir artefacto de build (dist)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
           path: dist
@@ -106,12 +106,12 @@ jobs:
       contents: read
     steps:
       - name: Checkout con historial completo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0 # Sonar necesita el historial para 'codigo nuevo'
 
       - name: Configurar Node.js con cache de npm
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -124,7 +124,7 @@ jobs:
         run: npm run test:coverage
 
       - name: Analisis SonarQube
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -147,10 +147,10 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configurar Node.js con cache de npm
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -168,7 +168,7 @@ jobs:
 
       - name: Subir reporte de auditoria
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: npm-audit
           path: npm-audit-report.json
@@ -187,17 +187,17 @@ jobs:
       packages: write # unico job que publica en GHCR
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # GHCR exige el nombre de imagen en minusculas (el repo puede tener mayusculas)
       - name: Definir nombre de imagen (minusculas)
         run: echo "IMAGEN=ghcr.io/${GITHUB_REPOSITORY,,}/medicitas-front" >> "$GITHUB_ENV"
 
       - name: Configurar Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login en GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -206,7 +206,7 @@ jobs:
       # Construir cargando en el daemon local (load), SIN publicar todavia.
       # VITE_API_URL se hornea en el build (variable de repo con fallback).
       - name: Construir imagen (load, sin push)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
@@ -248,7 +248,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout (2 commits para resolver HEAD~1)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
