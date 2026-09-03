@@ -13,6 +13,11 @@ coverage
 dist-ssr
 *.local
 
+# Env
+.env
+.env.*
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

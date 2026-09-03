@@ -1,0 +1,323 @@
+# ============================================================================
+# CI/CD MediCitas Frontend (React 19 / Vite / Nginx)
+#
+# Modelo de ramas:  feature/* -> develop -> staging -> main
+#   - develop : solo valida (no construye imagen ni despliega)
+#   - staging : valida + construye/publica imagen (sin desplegar)
+#   - main    : valida + construye/publica imagen + despliega a PRODUCCION
+# Promocion por artefacto: la imagen se construye una vez y se etiqueta con el
+# SHA del commit; esa misma imagen es la que se despliega.
+# ============================================================================
+name: CI-CD Frontend
+
+on:
+  push:
+    branches: [main, staging, develop]
+  pull_request:
+    branches: [main, staging, develop]
+
+# Cancela ejecuciones anteriores en curso para el mismo ref
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Etapa 1: Deteccion de secretos (Gitleaks). Corta si hay credenciales.
+  # --------------------------------------------------------------------------
+  secretos:
+    name: Deteccion de secretos
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout con historial completo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Escaneo de secretos con Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # --------------------------------------------------------------------------
+  # Etapas 2-5: Instalacion, lint, pruebas con cobertura y build.
+  # --------------------------------------------------------------------------
+  pruebas:
+    name: Lint, pruebas y build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # comentario de cobertura en el PR
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js con cache de npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Pruebas con cobertura
+        run: npm run test:coverage
+
+      - name: Build
+        run: npm run build
+
+      - name: Comentar cobertura en el PR
+        if: github.event_name == 'pull_request'
+        uses: davelosert/vitest-coverage-report-action@v2
+        with:
+          # Umbral informativo (la cobertura del front es baja): no tumba el build
+          json-summary-path: coverage/coverage-summary.json
+
+      - name: Subir reporte de cobertura
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage
+          if-no-files-found: ignore
+
+      - name: Subir artefacto de build (dist)
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+
+  # --------------------------------------------------------------------------
+  # Etapa 6: Analisis de calidad con SonarQube (servidor propio) + Quality Gate.
+  # --------------------------------------------------------------------------
+  calidad:
+    name: Analisis de calidad
+    needs: pruebas
+    # Los PRs de Dependabot no tienen acceso a los secrets (SONAR_*): se omite
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout con historial completo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Sonar necesita el historial para 'codigo nuevo'
+
+      - name: Configurar Node.js con cache de npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # Genera coverage/lcov.info que consume Sonar (ver sonar-project.properties)
+      - name: Pruebas con cobertura
+        run: npm run test:coverage
+
+      - name: Analisis SonarQube
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Verificar Quality Gate
+        uses: SonarSource/sonarqube-quality-gate-action@master
+        timeout-minutes: 5
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # --------------------------------------------------------------------------
+  # Etapa 7: Analisis de dependencias (npm audit). Corta si hay severidad alta.
+  # --------------------------------------------------------------------------
+  dependencias:
+    name: Analisis de dependencias
+    needs: pruebas
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js con cache de npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # Genera el reporte JSON aunque haya vulnerabilidades (para el artifact)
+      - name: Reporte de auditoria (JSON)
+        if: always()
+        run: npm audit --json > npm-audit-report.json || true
+
+      - name: npm audit (corta si severidad alta o critica)
+        run: npm audit --audit-level=high
+
+      - name: Subir reporte de auditoria
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit
+          path: npm-audit-report.json
+
+  # --------------------------------------------------------------------------
+  # Etapas 8-10: Construccion de imagen (build Vite + Nginx), escaneo (Trivy) y
+  # publicacion en GHCR. Solo en push a main o staging. Escaneo ANTES del push.
+  # --------------------------------------------------------------------------
+  imagen:
+    name: Construccion y publicacion de imagen
+    needs: [secretos, calidad, dependencias]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # unico job que publica en GHCR
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # GHCR exige el nombre de imagen en minusculas (el repo puede tener mayusculas)
+      - name: Definir nombre de imagen (minusculas)
+        run: echo "IMAGEN=ghcr.io/${GITHUB_REPOSITORY,,}/medicitas-front" >> "$GITHUB_ENV"
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login en GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Construir cargando en el daemon local (load), SIN publicar todavia.
+      # VITE_API_URL se hornea en el build (variable de repo con fallback).
+      - name: Construir imagen (load, sin push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: ${{ env.IMAGEN }}:${{ github.sha }}
+          build-args: |
+            VITE_API_URL=${{ vars.VITE_API_URL || 'http://localhost:8080/api' }}
+
+      # Escanear la imagen local ANTES de publicarla
+      - name: Escaneo de imagen con Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGEN }}:${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
+
+      # Recien despues del escaneo: publicar con dos tags (SHA + nombre de rama)
+      - name: Publicar imagen (SHA + rama)
+        run: |
+          RAMA="${GITHUB_REF_NAME}"
+          docker tag "${IMAGEN}:${GITHUB_SHA}" "${IMAGEN}:${RAMA}"
+          docker push "${IMAGEN}:${GITHUB_SHA}"
+          docker push "${IMAGEN}:${RAMA}"
+
+  # --------------------------------------------------------------------------
+  # Etapas 13-15: Despliegue a PRODUCCION en Railway usando la imagen ya
+  # validada de GHCR (promocion por artefacto). Requiere aprobacion manual via
+  # GitHub Environments. Verificacion por health-check y rollback al SHA anterior.
+  # --------------------------------------------------------------------------
+  deploy-produccion:
+    name: Despliegue a produccion
+    needs: imagen
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production # gate de aprobacion manual
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout (2 commits para resolver HEAD~1)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Definir nombre de imagen (minusculas)
+        run: echo "IMAGEN=ghcr.io/${GITHUB_REPOSITORY,,}/medicitas-front" >> "$GITHUB_ENV"
+
+      - name: Instalar Railway CLI
+        run: npm install -g @railway/cli
+
+      # Despliega en Railway la imagen de GHCR etiquetada con el SHA actual.
+      # Requisitos (una sola vez): el servicio Railway debe tener como origen la
+      # imagen ghcr.io/<repo>/medicitas-front y leer el tag desde IMAGE_TAG.
+      # Secrets: RAILWAY_TOKEN, RAILWAY_SERVICE, PRODUCTION_URL.
+      - name: Desplegar imagen en Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE: ${{ secrets.RAILWAY_SERVICE }}
+        run: |
+          echo "Desplegando ${IMAGEN}:${GITHUB_SHA} en Railway"
+          railway variables --service "$RAILWAY_SERVICE" --set "IMAGE_TAG=${GITHUB_SHA}"
+          railway redeploy --service "$RAILWAY_SERVICE" --yes
+
+      - name: Verificar salud de produccion
+        id: healthcheck
+        env:
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+        run: |
+          # Si aun no existe el dominio publico (primer deploy), se omite la
+          # verificacion en vez de fallar. Configura PRODUCTION_URL tras el
+          # primer deploy para activar el health check y el rollback.
+          if [ -z "$PRODUCTION_URL" ]; then
+            echo "PRODUCTION_URL no configurado: se omite el health check (primer deploy)."
+            exit 0
+          fi
+          echo "Esperando que el frontend responda 200..."
+          for i in $(seq 1 12); do
+            if curl -fsS -o /dev/null "$PRODUCTION_URL"; then
+              echo "Frontend OK en el intento $i"
+              exit 0
+            fi
+            echo "Intento $i/12 sin exito; reintentando en 10s..."
+            sleep 10
+          done
+          echo "La verificacion de salud fallo tras 12 intentos"
+          exit 1
+
+      # Rollback: si el health-check fallo, redesplegar el SHA anterior (HEAD~1)
+      - name: Rollback al despliegue anterior
+        if: failure() && steps.healthcheck.outcome == 'failure'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE: ${{ secrets.RAILWAY_SERVICE }}
+        run: |
+          PREV_SHA="$(git rev-parse HEAD~1)"
+          echo "Rollback: redeploy de ${IMAGEN}:${PREV_SHA}"
+          railway variables --service "$RAILWAY_SERVICE" --set "IMAGE_TAG=${PREV_SHA}"
+          railway redeploy --service "$RAILWAY_SERVICE" --yes
+
+      # Resumen siempre visible en la pestana Summary del run
+      - name: Resumen del despliegue
+        if: always()
+        run: |
+          {
+            echo "## Resumen de despliegue a produccion (frontend)"
+            echo ""
+            echo "| Campo | Valor |"
+            echo "|---|---|"
+            echo "| Commit | \`${GITHUB_SHA}\` |"
+            echo "| Autor | ${GITHUB_ACTOR} |"
+            echo "| Imagen | \`${IMAGEN}:${GITHUB_SHA}\` |"
+            echo "| Resultado | ${{ job.status }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

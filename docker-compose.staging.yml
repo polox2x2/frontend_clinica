@@ -1,0 +1,24 @@
+# docker-compose de STAGING — construye la imagen localmente con la API URL.
+# El frontend es estatico: VITE_API_URL se hornea en el build (no es runtime).
+
+services:
+  front:
+    build:
+      context: .
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080/api}
+    image: ghcr.io/${GITHUB_REPOSITORY}/medicitas-front:${TAG:-latest}
+    ports:
+      - "8081:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - medicitas-front-net
+
+networks:
+  medicitas-front-net:
+    driver: bridge
