@@ -1,7 +1,7 @@
 # ============================================================================
 # Stage 1: build — compila la app React con Vite
 # ============================================================================
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 
 # Copiamos primero los manifiestos para cachear la instalacion de dependencias
