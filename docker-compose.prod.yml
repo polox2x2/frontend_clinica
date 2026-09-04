@@ -1,0 +1,26 @@
+# docker-compose de PRODUCCION — usa la imagen ya publicada en GHCR (no recompila).
+# Nota: VITE_API_URL quedo horneado al construir esa imagen en el pipeline.
+
+services:
+  front:
+    image: ghcr.io/${GITHUB_REPOSITORY}/medicitas-front:${TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    networks:
+      - medicitas-front-net
+
+networks:
+  medicitas-front-net:
+    driver: bridge
