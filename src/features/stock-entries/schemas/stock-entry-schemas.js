@@ -1,0 +1,3 @@
+import { z } from 'zod'
+export const stockEntrySchema = z.object({ id: z.string().uuid(), createdAt: z.string(), productId: z.string().uuid(), productName: z.string(), quantity: z.number().int(), unitCost: z.coerce.number().nullish(), note: z.string().nullish(), isActive: z.boolean() })
+export const stockEntryRequestSchema = z.object({ productId: z.string().uuid('Selecciona un producto'), quantity: z.coerce.number().int().positive('La cantidad debe ser mayor a cero'), unitCost: z.union([z.coerce.number().min(0, 'El costo no puede ser negativo'), z.literal(''), z.null()]).transform((value) => value === '' ? null : value), note: z.string().trim().transform((value) => value || null) })

@@ -1,0 +1,11 @@
+import { useQuery } from '@tanstack/react-query'
+import { Boxes, CircleDollarSign, FileText, PackagePlus, Plus } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { useSession } from '@/features/auth'
+import { listProductOptions } from '@/features/products'
+import { productKeys } from '@/features/products/hooks/use-product-mutations'
+import { useCreateStockEntry } from '@/features/stock-entries/hooks/use-stock-entry-mutations'
+import { stockEntryRequestSchema } from '@/features/stock-entries/schemas/stock-entry-schemas'
+import { AppLoading } from '@/shared/components/feedback/AppLoading'
+import { EntityForm } from '@/shared/crud'
+export default function StockEntryFormPage() { const navigate = useNavigate(); const { data: session } = useSession(); const products = useQuery({ queryKey: [...productKeys.all, 'stock-options'], queryFn: listProductOptions }); const mutation = useCreateStockEntry(); if (products.isPending) return <AppLoading label="Consultando inventario" />; if (products.error) throw products.error; const fields = [{ name: 'productId', label: 'Producto', type: 'select', required: true, icon: Boxes, placeholder: 'Selecciona el producto', options: products.data.map((item) => ({ value: item.id, label: `${item.name} · Stock actual: ${item.stock}` })) }, { name: 'quantity', label: 'Unidades recibidas', type: 'number', required: true, icon: Plus }, { name: 'unitCost', label: 'Costo unitario', type: 'number', icon: CircleDollarSign, description: 'Opcional; importe en soles.' }, { name: 'note', label: 'Nota de ingreso', type: 'textarea', rows: 4, colSpan: 2, icon: FileText, placeholder: 'Proveedor, lote, número de comprobante u observaciones...' }]; async function submit(values) { await mutation.mutateAsync(values); navigate('/dashboard/entradas') } return <EntityForm title="Registrar entrada de stock" description="Al guardar, las unidades se sumarán inmediatamente al inventario del producto." icon={PackagePlus} fields={fields} schema={stockEntryRequestSchema} defaultValues={{ productId: '', quantity: 1, unitCost: '', note: '' }} onSubmit={submit} onCancel={() => navigate('/dashboard/entradas')} submitLabel="Registrar ingreso" isSubmitting={mutation.isPending} error={mutation.error} permissionPrefix="StockEntry" permissions={session.permissions} /> }

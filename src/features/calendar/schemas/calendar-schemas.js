@@ -1,0 +1,1 @@
+import{z}from'zod';export const calendarEventSchema=z.object({scheduleId:z.string().uuid(),date:z.string(),startTime:z.string(),endTime:z.string(),booked:z.boolean(),status:z.string(),appointmentId:z.string().uuid().nullish(),patientId:z.string().uuid().nullish(),patientName:z.string().nullish()});export const calendarEventsSchema=z.array(calendarEventSchema)

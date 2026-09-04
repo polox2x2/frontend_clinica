@@ -1,0 +1,8 @@
+import { Eye, PackagePlus } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { useSession } from '@/features/auth'
+import { stockEntriesClient } from '@/features/stock-entries/api/stock-entries-api'
+import { stockEntryKeys } from '@/features/stock-entries/hooks/use-stock-entry-mutations'
+import { EntityList } from '@/shared/crud'
+const money = new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }); const date = new Intl.DateTimeFormat('es-PE', { dateStyle: 'medium', timeStyle: 'short' })
+export default function StockEntriesListPage() { const navigate = useNavigate(); const { data: session } = useSession(); const columns = [{ key: 'productName', label: 'Producto', render: (item) => <span className="font-medium">{item.productName}</span> }, { key: 'quantity', label: 'Cantidad', sortable: true, render: (item) => <span className="font-semibold text-emerald-700">+{item.quantity} uds.</span> }, { key: 'unitCost', label: 'Costo unitario', sortable: true, render: (item) => item.unitCost == null ? '—' : money.format(item.unitCost) }, { key: 'createdAt', label: 'Registrado', sortable: true, render: (item) => date.format(new Date(item.createdAt)) }]; return <EntityList title="Entradas de stock" description="Historial de ingresos de mercadería al inventario." icon={PackagePlus} queryKey={stockEntryKeys.all} client={stockEntriesClient} columns={columns} searchPlaceholder="Consultar entradas..." createLabel="Registrar entrada" onCreate={() => navigate('/dashboard/entradas/nueva')} actions={[{ action: 'Read', label: 'Ver comprobante', icon: Eye, onClick: (item) => navigate(`/dashboard/entradas/${item.id}`) }]} permissionPrefix="StockEntry" permissions={session.permissions} /> }

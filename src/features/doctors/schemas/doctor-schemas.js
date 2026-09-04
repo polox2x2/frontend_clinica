@@ -1,0 +1,4 @@
+import { z } from 'zod'
+export const doctorSchema = z.object({ id:z.string().uuid(),createdAt:z.string(),cmp:z.string(),firstName:z.string(),lastName:z.string(),username:z.string(),email:z.string().email(),userId:z.string().uuid(),specialityId:z.string().uuid().nullish(),specialityName:z.string().nullish(),isActive:z.boolean() })
+export const doctorRequestSchema = z.object({ firstName:z.string().trim().min(1,'Ingresa el nombre'),lastName:z.string().trim().min(1,'Ingresa los apellidos'),email:z.string().trim().email('Ingresa un correo válido'),password:z.string().default(''),cmp:z.string().trim().min(1,'Ingresa el número de CMP'),specialityId:z.union([z.string().uuid(),z.literal(''),z.null()]).transform(v=>v||null) })
+export const createDoctorSchema = doctorRequestSchema.extend({password:z.string().min(1,'Ingresa una contraseña')})

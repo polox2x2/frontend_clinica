@@ -1,0 +1,8 @@
+import { Eye, ShoppingCart } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { useSession } from '@/features/auth'
+import { ordersClient } from '@/features/orders/api/orders-api'
+import { orderKeys } from '@/features/orders/hooks/use-order-mutations'
+import { EntityList } from '@/shared/crud'
+const money = new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }); const date = new Intl.DateTimeFormat('es-PE', { dateStyle: 'medium', timeStyle: 'short' })
+export default function OrdersListPage() { const navigate = useNavigate(); const { data: session } = useSession(); const columns = [{ key: 'patientName', label: 'Cliente', render: (item) => <span className="font-medium">{item.patientName || 'Venta directa'}</span> }, { key: 'items', label: 'Productos', render: (item) => `${item.items.reduce((sum, line) => sum + line.quantity, 0)} uds. · ${item.items.length} ítems` }, { key: 'total', label: 'Total', sortable: true, render: (item) => <span className="font-semibold">{money.format(item.total)}</span> }, { key: 'createdAt', label: 'Fecha', sortable: true, render: (item) => date.format(new Date(item.createdAt)) }]; return <EntityList title="Ventas" description="Movimientos de venta y salida de productos de farmacia." icon={ShoppingCart} queryKey={orderKeys.all} client={ordersClient} columns={columns} searchPlaceholder="Consultar ventas..." createLabel="Nueva venta" onCreate={() => navigate('/dashboard/ventas/nueva')} actions={[{ action: 'Read', label: 'Ver comprobante', icon: Eye, onClick: (item) => navigate(`/dashboard/ventas/${item.id}`) }]} permissionPrefix="Order" permissions={session.permissions} /> }

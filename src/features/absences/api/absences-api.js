@@ -1,0 +1,1 @@
+import{createCrudClient}from'@/core';import{absenceRequestSchema,absenceSchema}from'@/features/absences/schemas/absence-schemas';export const absencesClient=createCrudClient({basePath:'/doctor-absences',itemSchema:absenceSchema,requestSchema:absenceRequestSchema})

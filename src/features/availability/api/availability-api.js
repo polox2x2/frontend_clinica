@@ -1,0 +1,1 @@
+import{createCrudClient}from'@/core';import{availabilityRequestSchema,availabilitySchema}from'@/features/availability/schemas/availability-schemas';export const availabilityClient=createCrudClient({basePath:'/doctor-availabilities',itemSchema:availabilitySchema,requestSchema:availabilityRequestSchema})

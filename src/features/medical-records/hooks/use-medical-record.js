@@ -1,0 +1,1 @@
+import{useMutation,useQueryClient}from'@tanstack/react-query';import{addMedicalEntry}from'@/features/medical-records/api/medical-records-api';export const medicalRecordKeys={all:['medical-records']};export function useAddMedicalEntry(){const q=useQueryClient();return useMutation({mutationFn:addMedicalEntry,onSuccess:()=>q.invalidateQueries({queryKey:medicalRecordKeys.all})})}

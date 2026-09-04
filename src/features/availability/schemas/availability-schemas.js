@@ -1,0 +1,3 @@
+import { z } from 'zod'
+export const availabilitySchema=z.object({id:z.string().uuid(),createdAt:z.string(),doctorId:z.string().uuid(),doctorName:z.string(),dayOfWeek:z.string(),startTime:z.string(),endTime:z.string(),slotDurationMinutes:z.number().int(),isActive:z.boolean()})
+export const availabilityRequestSchema=z.object({doctorId:z.string().uuid('Selecciona un médico'),dayOfWeek:z.string().min(1,'Selecciona un día'),startTime:z.string().min(1,'Indica la hora inicial'),endTime:z.string().min(1,'Indica la hora final'),slotDurationMinutes:z.coerce.number().int().positive('La duración debe ser mayor a cero')}).refine(v=>v.endTime>v.startTime,{path:['endTime'],message:'La hora final debe ser posterior a la inicial'})
